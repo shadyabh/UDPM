@@ -15,7 +15,7 @@
   
    Instructions for running inference.
 
-   * Generate images from CIFAR10:
+    * Generate images from CIFAR10:
       ```
       python sample.py --checkpoints_dir <<CHECKPOINTS DIRECTORY>> --batch_size 1 --suffix UDPM32_CIFAR10 --img_size 32 --classes_num 10 --use_ema --n_samples 10 --net_type NCSN --            num_blocks_per_res 4 --model_channels 128 --model_ch_mult 2 2 2 --model_att_res 16 --t_type discrete --out_dir <<OUTPUT DIRECTORY>>
       ```
