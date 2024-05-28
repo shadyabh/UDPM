@@ -10,7 +10,7 @@
 
 import numpy as np
 import torch
-# from torch_utils import persistence
+from torch_utils import persistence
 from torch.nn.functional import silu
 
 #----------------------------------------------------------------------------
@@ -26,7 +26,7 @@ def weight_init(shape, mode, fan_in, fan_out):
 #----------------------------------------------------------------------------
 # Fully-connected layer.
 
-##@persistence.persistent_class
+@persistence.persistent_class
 class Linear(torch.nn.Module):
     def __init__(self, in_features, out_features, bias=True, init_mode='kaiming_normal', init_weight=1, init_bias=0):
         super().__init__()
@@ -45,7 +45,7 @@ class Linear(torch.nn.Module):
 #----------------------------------------------------------------------------
 # Convolutional layer with optional up/downsampling.
 
-##@persistence.persistent_class
+@persistence.persistent_class
 class Conv2d(torch.nn.Module):
     def __init__(self,
         in_channels, out_channels, kernel, bias=True, up=False, down=False,
@@ -92,11 +92,11 @@ class Conv2d(torch.nn.Module):
 #----------------------------------------------------------------------------
 # Group normalization.
 
-##@persistence.persistent_class
+@persistence.persistent_class
 class GroupNorm(torch.nn.Module):
     def __init__(self, num_channels, num_groups=32, min_channels_per_group=4, eps=1e-5):
         super().__init__()
-        self.num_groups = min(num_groups, num_channels // min_channels_per_group)
+        self.num_groups = max(min(num_groups, num_channels // min_channels_per_group), 1)
         self.eps = eps
         self.weight = torch.nn.Parameter(torch.ones(num_channels))
         self.bias = torch.nn.Parameter(torch.zeros(num_channels))
@@ -130,7 +130,7 @@ class AttentionOp(torch.autograd.Function):
 # Represents the union of all features employed by the DDPM++, NCSN++, and
 # ADM architectures.
 
-##@persistence.persistent_class
+@persistence.persistent_class
 class UNetBlock(torch.nn.Module):
     def __init__(self,
         in_channels, out_channels, emb_channels, up=False, down=False, attention=False,
@@ -163,7 +163,7 @@ class UNetBlock(torch.nn.Module):
             self.qkv = Conv2d(in_channels=out_channels, out_channels=out_channels*3, kernel=1, **(init_attn if init_attn is not None else init))
             self.proj = Conv2d(in_channels=out_channels, out_channels=out_channels, kernel=1, **init_zero)
 
-    def forward(self, x, emb):
+    def forward(self, x, emb, dp=None):
         orig = x
         x = self.conv0(silu(self.norm0(x)))
 
@@ -174,7 +174,7 @@ class UNetBlock(torch.nn.Module):
         else:
             x = silu(self.norm1(x.add_(params)))
 
-        x = self.conv1(torch.nn.functional.dropout(x, p=self.dropout, training=self.training))
+        x = self.conv1(torch.nn.functional.dropout(x, p=self.dropout if dp is None else dp, training=self.training))
         x = x.add_(self.skip(orig) if self.skip is not None else orig)
         x = x * self.skip_scale
 
@@ -189,7 +189,7 @@ class UNetBlock(torch.nn.Module):
 #----------------------------------------------------------------------------
 # Timestep embedding used in the DDPM++ and ADM architectures.
 
-##@persistence.persistent_class
+@persistence.persistent_class
 class PositionalEmbedding(torch.nn.Module):
     def __init__(self, num_channels, max_positions=10000, endpoint=False):
         super().__init__()
@@ -208,7 +208,7 @@ class PositionalEmbedding(torch.nn.Module):
 #----------------------------------------------------------------------------
 # Timestep embedding used in the NCSN++ architecture.
 
-##@persistence.persistent_class
+@persistence.persistent_class
 class FourierEmbedding(torch.nn.Module):
     def __init__(self, num_channels, scale=16):
         super().__init__()
@@ -225,7 +225,7 @@ class FourierEmbedding(torch.nn.Module):
 # Equations". Equivalent to the original implementation by Song et al.,
 # available at https://github.com/yang-song/score_sde_pytorch
 
-##@persistence.persistent_class
+@persistence.persistent_class
 class SongUNet(torch.nn.Module):
     def __init__(self,
         img_resolution,                     # Image resolution at input/output.
@@ -368,7 +368,7 @@ class SongUNet(torch.nn.Module):
 # original implementation by Dhariwal and Nichol, available at
 # https://github.com/openai/guided-diffusion
 
-##@persistence.persistent_class
+@persistence.persistent_class
 class DhariwalUNet(torch.nn.Module):
     def __init__(self,
         img_resolution,                     # Image resolution at input/output.

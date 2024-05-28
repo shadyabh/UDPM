@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 import torch.fft
 import numpy as np
-
+import lpips
 
 def flip(x):
     return x.flip([-2, -1])
@@ -116,14 +116,6 @@ def zero_SV(H, eps):
     return H
 
 
-def pinv(H, eps=1e-3):
-    abs_H = torch.abs(H)
-    H_ = H.clone()
-    H_[abs_H / abs_H.max() <= eps] = 0
-    H_[abs_H / abs_H.max() > eps] = 1 / H_[abs_H / abs_H.max() > eps]
-    return H_
-
-
 def fft_Down_(x, h, alpha):
     X_fft = torch.fft.fftn(x, dim=(-2, -1))
     H = fft_circ(h, s=x.shape[-2:])
@@ -160,18 +152,38 @@ def EMA_update(acc_state_dict, new_state_dict, EMA_weight):
 
     return acc_state_dict
 
-@torch.no_grad()
-def patchify(x, patch_size):
-    return x.unfold(-2, patch_size, patch_size).unfold(-2, patch_size, patch_size)
 
-@torch.no_grad()
-def unpatchify(x):
-    return x.permute(0, 1, 2, 4, 3, 5).view(*x.shape[0:2], x.shape[2]*x.shape[4], x.shape[3]*x.shape[5])
+class LPIPS(lpips.LPIPS):
+    def forward(self, in0, in1, retPerLayer=False, normalize=False, p=2.0):
+        if normalize: # turn on this flag if input is [0,1] so it can be adjusted to [-1, +1]
+            in0 = 2 * in0  - 1
+            in1 = 2 * in1  - 1
 
-@torch.no_grad()
-def random_mask(x, masking_ratio, patch_size=4):
-    x_p = patchify(x, patch_size)
-    mask = torch.rand(x_p.shape[0], 1, x_p.shape[2], x_p.shape[3], 1, 1, device=x.device)
-    mask = mask > masking_ratio
-    return unpatchify(mask * x_p)
+        # v0.0 - original release had a bug, where input was not scaled
+        in0_input, in1_input = (self.scaling_layer(in0), self.scaling_layer(in1)) if self.version=='0.1' else (in0, in1)
+        outs0, outs1 = self.net.forward(in0_input), self.net.forward(in1_input)
+        feats0, feats1, diffs = {}, {}, {}
 
+        for kk in range(self.L):
+            feats0[kk], feats1[kk] = lpips.normalize_tensor(outs0[kk]), lpips.normalize_tensor(outs1[kk])
+            diffs[kk] = torch.abs(feats0[kk]-feats1[kk])**p
+
+        if(self.lpips):
+            if(self.spatial):
+                res = [lpips.upsample(self.lins[kk](diffs[kk]), out_HW=in0.shape[2:]) for kk in range(self.L)]
+            else:
+                res = [lpips.spatial_average(self.lins[kk](diffs[kk]), keepdim=True) for kk in range(self.L)]
+        else:
+            if(self.spatial):
+                res = [lpips.upsample(diffs[kk].sum(dim=1,keepdim=True), out_HW=in0.shape[2:]) for kk in range(self.L)]
+            else:
+                res = [lpips.spatial_average(diffs[kk].sum(dim=1,keepdim=True), keepdim=True) for kk in range(self.L)]
+
+        val = 0
+        for l in range(self.L):
+            val += res[l]
+        
+        if(retPerLayer):
+            return (val, res)
+        else:
+            return val

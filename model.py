@@ -37,17 +37,18 @@ class LabelEmbedder(nn.Module):
 
 class UDPM_Net(nn.Module):
     def __init__(self, in_shape, model_channels, channel_mult, attn_resolutions, num_blocks_per_res=4, classes_num=0,
-                 in_channels=3, out_channels=3, class_dropout_prob=0, for_SR=False, net_type='EDM', dropout=0):
+                 in_channels=3, out_channels=3, class_dropout_prob=0, for_SR=False, net_type='EDM', dropout=0, sf=1):
         super(UDPM_Net, self).__init__()
         self.in_shape = in_shape
         self.classes_num = classes_num
         self.class_dropout_prob = class_dropout_prob
         self.for_SR = for_SR
+        self.sf = sf
         self.net_type = net_type
         if net_type == 'Dhariwal':
-            self.net = DhariwalUNet(img_resolution      =in_shape,                     # Image resolution at input/output.
-                                    in_channels         =in_channels,                        # Number of color channels at input.
-                                    out_channels        =out_channels,                       # Number of color channels at output.
+            self.net = DhariwalUNet(img_resolution      = in_shape,                     # Image resolution at input/output.
+                                    in_channels         = in_channels,                        # Number of color channels at input.
+                                    out_channels        = out_channels * sf ** 2,                       # Number of color channels at output.
                                     label_dim           = classes_num + (class_dropout_prob > 0),            # Number of class labels, 0 = unconditional.
                                     augment_dim         = 0,            # Augmentation label dimensionality, 0 = no augmentation.
 
@@ -61,9 +62,9 @@ class UDPM_Net(nn.Module):
             )
         elif net_type == 'NCSN':
             self.net = SongUNet(
-                                    img_resolution      =in_shape,                     # Image resolution at input/output.
-                                    in_channels         =in_channels,                        # Number of color channels at input.
-                                    out_channels        =out_channels,                       # Number of color channels at output.
+                                    img_resolution      = in_shape,                     # Image resolution at input/output.
+                                    in_channels         = in_channels,                        # Number of color channels at input.
+                                    out_channels        = out_channels * sf ** 2,                       # Number of color channels at output.
                                     label_dim           = classes_num + (class_dropout_prob > 0),            # Number of class labels, 0 = unconditional.
                                     augment_dim         = 0,            # Augmentation label dimensionality, 0 = no augmentation.
 
@@ -85,7 +86,7 @@ class UDPM_Net(nn.Module):
             self.net = SongUNet(
                                     img_resolution      = in_shape,                     # Image resolution at input/output.
                                     in_channels         = in_channels,                        # Number of color channels at input.
-                                    out_channels        = out_channels,                       # Number of color channels at output.
+                                    out_channels        = out_channels * sf ** 2,                       # Number of color channels at output.
                                     label_dim           = classes_num + (class_dropout_prob > 0),            # Number of class labels, 0 = unconditional.
                                     augment_dim         = 0,            # Augmentation label dimensionality, 0 = no augmentation.
 
@@ -116,4 +117,6 @@ class UDPM_Net(nn.Module):
         else:
             out = self.net(x, t, None)
 
+        if self.sf > 1:
+            out = nn.functional.pixel_shuffle(out, self.sf)
         return  out
