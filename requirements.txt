@@ -1,0 +1,7 @@
+torch>=1.13.1
+torchvision>=0.14.1
+numpy>=1.21.0
+tqdm>=4.64.0
+pillow>=9.0.0
+matplotlib>=3.5.0
+lpips>=0.1.4
